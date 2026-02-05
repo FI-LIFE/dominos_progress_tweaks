@@ -32,11 +32,11 @@ if not GetWatchedFactionInfo then
         end
 
         return data.name,
-            data.reaction,
-            data.currentReactionThreshold,
-            data.nextReactionThreshold,
-            data.currentStanding,
-            data.factionID
+        data.reaction,
+        data.currentReactionThreshold,
+        data.nextReactionThreshold,
+        data.currentStanding,
+        data.factionID
     end
 end
 
@@ -62,6 +62,28 @@ function Reputation:GetValues()
     local name, reaction, min, max, value, factionID = GetWatchedFactionInfo()
     if not name then
         return 0, 1
+    end
+
+    if IsMajorFaction(factionID) then
+        local info = C_MajorFactions.GetMajorFactionData(factionID)
+        local capped = C_MajorFactions.HasMaximumRenown(factionID)
+
+        if IsFactionParagon(factionID) then
+            if capped then
+                local currentValue, threshold = C_Reputation.GetFactionParagonInfo(factionID)
+                return currentValue % threshold, threshold
+            else
+                return (info.renownReputationEarned or 0), info.renownLevelThreshold
+            end
+        end
+    elseif IsFactionParagon(factionID) then
+        local currentValue, threshold = C_Reputation.GetFactionParagonInfo(factionID)
+
+        if value >= max then
+            return currentValue % threshold, threshold
+        else
+            return value - min, max - min
+        end
     end
 
     if IsFactionParagon(factionID) then
@@ -117,6 +139,11 @@ function Reputation:GetBonusText()
     end
 
     if IsFactionParagon(factionID) then
+        return nil
+    end
+
+    if IsFactionParagon(factionID) then
+        local currentValue, threshold, rewardQuestID, hasRewardPending = C_Reputation.GetFactionParagonInfo(factionID)
         return GetText("FACTION_STANDING_LABEL" .. reaction, UnitSex("player"))
     elseif IsFriendshipFaction(factionID) then
         local info = C_GossipInfo.GetFriendshipReputation(factionID)
@@ -135,6 +162,10 @@ function Reputation:IsCapped()
         return false
     end
 
+    if IsFactionParagon(factionID) then
+        return false
+    end
+
     if IsFriendshipFaction(factionID) then
         local info = C_GossipInfo.GetFriendshipReputation(factionID)
         return not info.nextThreshold
@@ -147,6 +178,15 @@ end
 
 function Reputation:IsActive()
     return GetWatchedFactionInfo() ~= nil
+end
+
+function Reputation:HasRewardPending()
+    local name, reaction, min, max, value, factionID = GetWatchedFactionInfo()
+    if factionID and IsFactionParagon(factionID) then
+        local _, _, _, hasRewardPending = C_Reputation.GetFactionParagonInfo(factionID)
+        return hasRewardPending
+    end
+    return false
 end
 
 -- register this as a possible progress bar mode

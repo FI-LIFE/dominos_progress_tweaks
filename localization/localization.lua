@@ -28,6 +28,7 @@ L.Display_max = 'Show Maximum Value'
 L.Display_bonus = 'Show Rest/Bonus'
 L.Display_percent = 'Show Percentage'
 L.Display_remaining = 'Show Remaining'
+L.Display_reward = 'Show Reward Icon'
 
 L.Color_xp = 'XP Bar Color'
 L.Color_xp_bonus = 'Bonus XP Color'

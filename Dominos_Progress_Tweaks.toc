@@ -1,6 +1,6 @@
 ## Interface: 120001, 120000, 110207, 50503, 20505, 11508
-## Title: Dominos Progress
-## Title-zhCN: Dominos 进度条模块
+## Title: Dominos Progress |cff00ccff[Tweaks by FI-LIFE]|r
+## Title-zhCN: Dominos 进度条模块 |cff00ccff[Tweaks by FI-LIFE]|r
 ## Notes: Progress bars of all sorts
 ## Notes-zhCN: 各种进度条
 ## Author: Tuller

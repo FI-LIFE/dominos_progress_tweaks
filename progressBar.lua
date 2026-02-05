@@ -43,13 +43,13 @@ function ProgressBar:OnCreate(...)
 	ProgressBar.proto.OnCreate(self, ...)
 
 	self.colors = {
-		base = {0, 0, 0},
-		bonus = {0, 0, 0, 0},
-		bg = {0, 0, 0, 1}
+		base = {0, 0, 0, (self:GetBackgroundOpacity()) / 100},
+		bonus = {0, 0, 0, (self:GetBackgroundOpacity()) / 100},
+		bg = {0, 0, 0, (self:GetBackgroundOpacity()) / 100}
 	}
 
 	local bg = self:CreateTexture(nil, 'BACKGROUND')
-	bg:SetColorTexture(0, 0, 0, 1)
+	bg:SetColorTexture(unpack(self.colors.bg))
 	bg:SetAllPoints(self)
 	self.bg = bg
 
@@ -67,6 +67,12 @@ function ProgressBar:OnCreate(...)
 	local text = click:CreateFontString(nil, 'OVERLAY', 'GameFontHighlightSmall')
 	text:SetPoint('CENTER')
 	self.text = text
+
+	local rewardIcon = click:CreateTexture(nil, 'OVERLAY')
+	rewardIcon:SetTexture('Interface\\Icons\\inv_legion_cache_armyofthelight')
+	rewardIcon:SetPoint('RIGHT', -2, 0)
+	rewardIcon:Hide()
+	self.rewardIcon = rewardIcon
 end
 
 function ProgressBar:OnRelease(...)
@@ -89,13 +95,16 @@ function ProgressBar:GetDefaults()
 		spacing = 1,
 		texture = 'blizzard',
 		font = 'Friz Quadrata TT',
+		fontSize = 16,
 		display = {
 			label = true,
 			value = true,
 			max = true,
-			bonus = true
+			bonus = true,
+			reward = true
 		},
 		displayLayer = 'BACKGROUND',
+		backgroundOpacity = 100,
 		alwaysShowText = true,
 		lockMode = true
 	}
@@ -104,16 +113,37 @@ end
 --[[ events ]]--
 
 function ProgressBar:OnEnter()
+	self.isHovering = true
 	self.text:Show()
+	self:Update()
 end
 
 function ProgressBar:OnLeave()
+	self.isHovering = false
 	if not self:GetAlwaysShowText() then
 		self.text:Hide()
 	end
+	self:Update()
 end
 
-function ProgressBar:OnClick()
+function ProgressBar:OnClick(button)
+	if button == 'RightButton' then
+		local mode = self:GetMode()
+		if mode == 'reputation' then
+			ToggleCharacter('ReputationFrame')
+		elseif mode == 'xp' then
+			ToggleCharacter('PaperDollFrame')
+		elseif mode == 'honor' then
+			TogglePVPUI()
+		elseif mode == 'azerite' then
+			local item = C_AzeriteItem.FindActiveAzeriteItem()
+			if item then
+				OpenAzeriteEmpoweredItemUIFromItemLocation(item)
+			end
+		end
+		return
+	end
+
 	if self:IsModeLocked() then
 		self:NextMode()
 	else
@@ -149,6 +179,13 @@ function ProgressBar:Update()
 	else
 		self:UpdateText(label, value, max, bonus, capped)
 	end
+
+	if self:Displaying('reward') and self.provider.HasRewardPending and self.provider:HasRewardPending() then
+		self.rewardIcon:SetSize(self:GetDesiredHeight() - 2, self:GetDesiredHeight() - 2)
+		self.rewardIcon:Show()
+	else
+		self.rewardIcon:Hide()
+	end
 end
 
 do
@@ -158,6 +195,11 @@ do
 	local tconcat = table.concat
 
 	function ProgressBar:UpdateText(label, value, max, bonus, capped)
+		if self.isHovering then
+			self:SetText(('%s - %.1f%%'):format(label or '', max > 0 and (value / max * 100) or 0))
+			return
+		end
+
 		buffer = buffer or {}
 		twipe(buffer)
 
@@ -193,7 +235,7 @@ do
 			end
 
 			if self:Displaying('percent') and max ~= 0 then
-				tinsert(buffer, ('%.1f%%'):format(value / max * 100))
+				tinsert(buffer, ('- %.1f%%'):format(value / max * 100))
 			end
 		end
 
@@ -316,7 +358,7 @@ function ProgressBar:SetLockMode(lock)
 end
 
 function ProgressBar:IsModeLocked()
-	return self.sets.lockMode or #self.modes <= 1
+	return (self.sets and self.sets.lockMode) or #self.modes <= 1
 end
 
 function ProgressBar:UpdateLockMode()
@@ -512,6 +554,23 @@ function ProgressBar:GetBackgroundColor()
 	return r or 0, g or 0, b or 0, a or 1
 end
 
+function ProgressBar:SetBackgroundOpacity(opacity)
+	self.sets.backgroundOpacity = tonumber(opacity) or 100
+	self:UpdateBackgroundColor()
+end
+
+function ProgressBar:GetBackgroundOpacity()
+	return (self.sets and self.sets.backgroundOpacity) or 100
+end
+
+function ProgressBar:UpdateBackgroundColor()
+	local r, g, b = unpack(self.colors.bg)
+	local a = self:GetBackgroundOpacity() / 100
+
+	self.colors.bg[4] = a
+	self.bg:SetVertexColor(r, g, b, a)
+end
+
 
 --[[ sizing ]]--
 
@@ -577,6 +636,16 @@ function ProgressBar:GetSegmentSize()
 	return width, height
 end
 
+function ProgressBar:SetPadding(padding)
+	padding = tonumber(padding) or 0
+	self.sets.padW = padding
+	self.sets.padH = padding
+	self:Layout()
+end
+
+function ProgressBar:GetPadding()
+	return self.sets.padW or 0, self.sets.padH or 0
+end
 
 --[[ status bar texture ]]---
 
@@ -623,12 +692,26 @@ function ProgressBar:GetFontID()
 	return self.sets.font or 'Friz Quadrata TT'
 end
 
+function ProgressBar:SetFontSize(size)
+	size = tonumber(size) or 16
+
+	if self.sets.fontSize ~= size then
+		self.sets.fontSize = size
+		self:UpdateFont()
+	end
+end
+
+function ProgressBar:GetFontSize()
+	return self.sets.fontSize or 16
+end
+
 function ProgressBar:UpdateFont()
 	local newFont = LibStub('LibSharedMedia-3.0'):Fetch('font', self:GetFontID())
-	local oldFont, fontSize, fontFlags = self.text:GetFont()
+	local _, _, fontFlags = self.text:GetFont()
+	local newSize = self:GetFontSize()
 
-	if newFont and newFont ~= oldFont then
-		self.text:SetFont(newFont, fontSize, fontFlags)
+	if newFont then
+		self.text:SetFont(newFont, newSize, fontFlags)
 	end
 end
 
@@ -747,6 +830,7 @@ do
 		self:AddTextPanel(menu)
 		self:AddTexturePanel(menu)
 		self:AddFontPanel(menu)
+		self:AddCustomPanel(menu)
 
 		menu:AddFadingPanel()
 		menu:AddAdvancedPanel(true)
@@ -828,7 +912,7 @@ do
 			set = function(_, enable)
 				panel.owner:SetHideAtMaxLevel(enable)
 			end
-		}	
+		}
 
 		if #self.modes > 1 then
 			panel:NewCheckButton{
@@ -868,7 +952,7 @@ do
 			end
 		}
 
-		for _, part in ipairs{'label', 'value', 'max', 'bonus', 'remaining', 'percent'} do
+		for _, part in ipairs{'label', 'value', 'max', 'bonus', 'remaining', 'percent', 'reward'} do
 			panel:NewCheckButton{
 				name = l['Display_' .. part],
 
@@ -895,6 +979,37 @@ do
 			set = function(_, value)
 				panel.owner:SetFontID(value)
 			end,
+		}
+	end
+
+	function ProgressBar:AddCustomPanel(menu)
+		local panel = menu:NewPanel('Other')
+
+		panel.fontSizeSlider = panel:NewSlider{
+			name = _G.FONT_SIZE,
+			min = 4,
+			max = 48,
+			step = 1,
+			get = function() return panel.owner:GetFontSize() end,
+			set = function(_, v) panel.owner:SetFontSize(v) end,
+		}
+
+		panel.borderSlider = panel:NewSlider{
+			name = 'Border',
+			min = 0,
+			max = 20,
+			step = 1,
+			get = function() return (panel.owner:GetPadding()) end,
+			set = function(_, v) panel.owner:SetPadding(v) end,
+		}
+
+		panel.opacitySlider = panel:NewSlider{
+			name = 'Opacity',
+			min = 0,
+			max = 100,
+			step = 1,
+			get = function() return panel.owner:GetBackgroundOpacity() end,
+			set = function(_, v) panel.owner:SetBackgroundOpacity(v) end,
 		}
 	end
 
